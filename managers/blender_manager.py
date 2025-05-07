@@ -1,67 +1,154 @@
 import json
 import subprocess
 import threading
+import logging
+from logging.handlers import RotatingFileHandler
+from typing import List, Callable, Optional
 
 import bpy
 from PyQt5.QtCore import QObject
 
 from util import utils
 
+# Configure logging
+logger = logging.getLogger('BlenderManager')
+logger.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# File handler with rotation
+file_handler = RotatingFileHandler('blender_interface.log', maxBytes=1048576, backupCount=5)
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
 
 # TODO: Добавить рендер movie
 class BlenderManager(QObject):
     def __init__(self, parent=None):
+        """Initialize BlenderManager with a parent QObject."""
         super().__init__(parent)
-        self.qt_signal = parent.signal
+        self.qt_signal = parent.signal if parent else None
+        logger.info("Initializing BlenderManager")
+        if not self.qt_signal:
+            logger.warning("No Qt signal provided, signal emissions will be ignored")
 
-    def render_project_thumbnail(self, project):
-        self.qt_signal.emit(f"Start render thumbnail: {project.file_path}")
+    def render_project_thumbnail(self, project) -> None:
+        """Start rendering a thumbnail for the given project in a separate thread."""
+        if not project or not hasattr(project, 'file_path') or not hasattr(project, 'unique_name'):
+            logger.error("Invalid project object provided for thumbnail rendering")
+            if self.qt_signal:
+                self.qt_signal.emit("Error: Invalid project object")
+            return
 
-        render_thread = threading.Thread(target=self._start_render_thumbnail, args=(project, lambda: self._on_render_thumbnails_complete([]),))
+        logger.info(f"Starting thumbnail render for project: {project.file_path}")
+        if self.qt_signal:
+            self.qt_signal.emit(f"Start render thumbnail: {project.file_path}")
 
-        render_thread.start()
+        try:
+            render_thread = threading.Thread(
+                target=self._start_render_thumbnail,
+                args=(project, lambda: self._on_render_thumbnails_complete([]))
+            )
+            render_thread.start()
+            logger.debug(f"Started render thread for thumbnail: {project.file_path}")
+        except Exception as e:
+            logger.error(f"Error starting thumbnail render thread for {project.file_path}: {str(e)}")
+            if self.qt_signal:
+                self.qt_signal.emit(f"Error starting thumbnail render: {str(e)}")
 
-    def start_render_projects(self, projects, isCreatingThumbnails):
-        # Запускаем рендер в отдельном потоке
-        if isCreatingThumbnails:
-            render_thread = threading.Thread(target=self._render_next_thumbnail, args=(projects,))
+    def start_render_projects(self, projects: List, isCreatingThumbnails: bool) -> None:
+        """Start rendering projects or thumbnails in a separate thread."""
+        if not isinstance(projects, list):
+            logger.error(f"Invalid projects type: {type(projects)}, expected list")
+            if self.qt_signal:
+                self.qt_signal.emit("Error: Projects must be a list")
+            return
+        if not projects:
+            logger.warning("Empty projects list provided for rendering")
+            if self.qt_signal:
+                self.qt_signal.emit("No projects to render")
+            return
 
-        else:
-            render_thread = threading.Thread(target=self._render_next, args=(projects,))
+        logger.info(f"Starting render for {len(projects)} projects, isCreatingThumbnails: {isCreatingThumbnails}")
+        try:
+            # Запускаем рендер в отдельном потоке
+            render_thread = threading.Thread(
+                target=self._render_next_thumbnail if isCreatingThumbnails else self._render_next,
+                args=(projects,)
+            )
+            render_thread.start()
+            logger.debug("Started render thread for projects")
+        except Exception as e:
+            logger.error(f"Error starting render thread: {str(e)}")
+            if self.qt_signal:
+                self.qt_signal.emit(f"Error starting render: {str(e)}")
 
-        render_thread.start()
-
-    def _render_next_thumbnail(self, projects_without_thumbnails):
+    def _render_next_thumbnail(self, projects_without_thumbnails: List) -> None:
+        """Render the next thumbnail in the queue."""
         if not projects_without_thumbnails:
             # Если очередь пуста, завершаем выполнение
-            # self.qt_signal.emit("All thumbnail renders completed.\n")
+            logger.info("All thumbnail renders completed")
+            if self.qt_signal:
+                self.qt_signal.emit("All thumbnail renders completed.\n")
             return
 
         # Берем первый файл из очереди
         project = projects_without_thumbnails.pop(0)
+        if not hasattr(project, 'file_path') or not hasattr(project, 'unique_name'):
+            logger.error("Invalid project object in thumbnail queue")
+            if self.qt_signal:
+                self.qt_signal.emit("Error: Invalid project object")
+            self._on_render_thumbnails_complete(projects_without_thumbnails)
+            return
 
         # Выводим информацию о начале рендера
-        self.qt_signal.emit(f"Start render thumbnail: {project.file_path}")
+        logger.info(f"Starting thumbnail render: {project.file_path}")
+        if self.qt_signal:
+            self.qt_signal.emit(f"Start render thumbnail: {project.file_path}")
 
-        # Запускаем рендер через subprocess
-        self._start_render_thumbnail(project, lambda: self._on_render_thumbnails_complete(projects_without_thumbnails))
+        try:
+            self._start_render_thumbnail(project, lambda: self._on_render_thumbnails_complete(projects_without_thumbnails))
+        except Exception as e:
+            logger.error(f"Error rendering thumbnail for {project.file_path}: {str(e)}")
+            if self.qt_signal:
+                self.qt_signal.emit(f"Error rendering thumbnail: {str(e)}")
+            self._on_render_thumbnails_complete(projects_without_thumbnails)
 
-    def _start_render_thumbnail(self, project, callback):
+    def _start_render_thumbnail(self, project, callback: Callable) -> None:
+        """Execute the thumbnail rendering process for a project."""
         file_path = project.file_path
         unique_name = project.unique_name
+        logger.debug(f"Preparing to render thumbnail for {file_path} with unique name {unique_name}")
+
         # Проверяем существование файлов
         if not utils.is_path_exists(file_path):
-            self.qt_signal.emit(f"File {file_path} not founded.")
+            logger.error(f"Project file not found: {file_path}")
+            if self.qt_signal:
+                self.qt_signal.emit(f"File {file_path} not found.")
+            callback()
             return
-        if not utils.is_path_exists(utils.transform_path_to_standard(utils.get_config_value("work_directory") + "\\scripts\\render_preview_script.py")):
-            self.qt_signal.emit("File render_preview_script.py not founded.")
+
+        script_path = utils.transform_path_to_standard(
+            utils.get_config_value("work_directory") + "\\scripts\\render_preview_script.py"
+        )
+        if not utils.is_path_exists(script_path):
+            logger.error(f"Render script not found: {script_path}")
+            if self.qt_signal:
+                self.qt_signal.emit("File render_preview_script.py not found.")
+            callback()
             return
 
         # Команда для запуска Blender
-        blender_executable = utils.get_config_value("current_bin")  # Используемый блендер
-
-        if not utils.is_path_exists(blender_executable):
-            self.qt_signal.emit("blender.exe (bin) not find")
+        blender_executable = utils.get_config_value("current_bin")
+        if not blender_executable or not utils.is_path_exists(blender_executable):
+            logger.error(f"Blender executable not found: {blender_executable}")
+            if self.qt_signal:
+                self.qt_signal.emit("Blender executable not found.")
+            callback()
             return
 
         command = [
@@ -72,65 +159,125 @@ class BlenderManager(QObject):
             file_path,
             unique_name,
         ]
+        logger.debug(f"Executing command: {' '.join(command)}")
 
-        # Запускаем процесс
-        with subprocess.Popen(
-                command,
-        ) as process:
-            # Проверяем статус завершения процесса
-            # self.qt_signal.emit(f"Процесс завершился с кодом {process.returncode}")
-            self.qt_signal.emit(f"Blender starts with file: {file_path}")
-            # if process.returncode == 0:
-            #     # print(f"Ошибка выполнения: Процесс завершился с кодом {process.returncode}")
-            #     self.qt_signal.emit(f"Ошибка выполнения: Процесс завершился с кодом {process.returncode}")
-            # else:
-            #     # print("Процесс успешно завершен.")
-            #     self.qt_signal.emit("Процесс успешно завершен.")
+        try:
+            with subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+            ) as process:
+                stdout, stderr = process.communicate()
+                logger.info(f"Blender process started for thumbnail: {file_path}")
+                if self.qt_signal:
+                    self.qt_signal.emit(f"Blender starts with file: {file_path}")
+
+                if process.returncode != 0:
+                    logger.error(f"Thumbnail render failed for {file_path}, return code: {process.returncode}, stderr: {stderr}")
+                    if self.qt_signal:
+                        self.qt_signal.emit(f"Thumbnail render failed with code {process.returncode}: {stderr}")
+                else:
+                    logger.info(f"Thumbnail render completed successfully for {file_path}")
+                    if self.qt_signal:
+                        self.qt_signal.emit(f"Thumbnail render completed for {file_path}")
+
+        except subprocess.SubprocessError as e:
+            logger.error(f"Subprocess error rendering thumbnail for {file_path}: {str(e)}")
+            if self.qt_signal:
+                self.qt_signal.emit(f"Subprocess error rendering thumbnail: {str(e)}")
+        except Exception as e:
+            logger.error(f"Unexpected error rendering thumbnail for {file_path}: {str(e)}")
+            if self.qt_signal:
+                self.qt_signal.emit(f"Unexpected error rendering thumbnail: {str(e)}")
 
         callback()
 
-    def _on_render_thumbnails_complete(self, projects):
+    def _on_render_thumbnails_complete(self, projects: List) -> None:
+        """Handle completion of a thumbnail render and proceed to the next."""
         # Выводим информацию о завершении рендера
-        self.qt_signal.emit("Render ends\n")
+        logger.info("Thumbnail render completed")
+        if self.qt_signal:
+            self.qt_signal.emit("Render ends\n")
 
         # Запускаем рендер следующего файла
         self._render_next_thumbnail(projects)
 
-    def _render_next(self, projects_to_render):
+    def _render_next(self, projects_to_render: List) -> None:
+        """Render the next project in the queue."""
         if not projects_to_render:
             # Если очередь пуста, завершаем выполнение
-            self.qt_signal.emit("All renders completed.\n")
+            logger.info("All renders completed")
+            if self.qt_signal:
+                self.qt_signal.emit("All renders completed.\n")
             return
 
         # Берем первый файл из очереди
-        # file_path, file_id = files_to_render.pop(0)
         project = projects_to_render.pop(0)
+        if not hasattr(project, 'file_path') or not hasattr(project, 'settings'):
+            logger.error("Invalid project object in render queue")
+            if self.qt_signal:
+                self.qt_signal.emit("Error: Invalid project object")
+            self._on_render_complete(projects_to_render)
+            return
 
         # Выводим информацию о начале рендера
-        # self.progress_signal.emit(f"Start render: {file_path}\n")
-        self.qt_signal.emit(f"Start render: {project.file_path}")
+        logger.info(f"Starting render: {project.file_path}")
+        if self.qt_signal:
+            self.qt_signal.emit(f"Start render: {project.file_path}")
 
-        # Запускаем рендер через subprocess
-        # self._start_render(file_path, self.file_settings[file_id], lambda: self._on_render_complete(files_to_render))
-        self._start_render(project, lambda: self._on_render_complete(projects_to_render))
+        try:
+            self._start_render(project, lambda: self._on_render_complete(projects_to_render))
+        except Exception as e:
+            logger.error(f"Error rendering project {project.file_path}: {str(e)}")
+            if self.qt_signal:
+                self.qt_signal.emit(f"Error rendering project: {str(e)}")
+            self._on_render_complete(projects_to_render)
 
     # TODO: Надо сделать отслеживание по логам блендера
-    def _start_render(self, project, callback):
+    def _start_render(self, project, callback: Callable) -> None:
+        """Execute the rendering process for a project."""
         file_path = project.file_path
         settings = project.settings
+        logger.debug(f"Preparing to render project: {file_path}")
+
         # Проверяем существование файлов
         if not utils.is_path_exists(file_path):
-            self.qt_signal.emit(f"File {file_path} not founded.")
+            logger.error(f"Project file not found: {file_path}")
+            if self.qt_signal:
+                self.qt_signal.emit(f"File {file_path} not found.")
+            callback()
             return
-        if not utils.is_path_exists(utils.transform_path_to_standard(utils.get_config_value("work_directory") + "\\scripts\\render_script.py")):
-            self.qt_signal.emit("File render_script.py not founded.")
+
+        script_path = utils.transform_path_to_standard(
+            utils.get_config_value("work_directory") + "\\scripts\\render_script.py"
+        )
+        if not utils.is_path_exists(script_path):
+            logger.error(f"Render script not found: {script_path}")
+            if self.qt_signal:
+                self.qt_signal.emit("File render_script.py not found.")
+            callback()
             return
 
         # Преобразуем настройки в JSON-строку
-        settings_json = json.dumps(settings)
+        try:
+            settings_json = json.dumps(settings)
+        except TypeError as e:
+            logger.error(f"Failed to serialize settings for {file_path}: {str(e)}")
+            if self.qt_signal:
+                self.qt_signal.emit(f"Error serializing settings: {str(e)}")
+            callback()
+            return
 
         # Команда для запуска Blender
-        blender_executable = utils.get_config_value("current_bin")  # Используемый блендер
+        blender_executable = utils.get_config_value("current_bin")
+        if not blender_executable or not utils.is_path_exists(blender_executable):
+            logger.error(f"Blender executable not found: {blender_executable}")
+            if self.qt_signal:
+                self.qt_signal.emit("Blender executable not found.")
+            callback()
+            return
+
         command = [
             blender_executable,
             "--background",  # Запуск в фоновом режиме
@@ -139,50 +286,69 @@ class BlenderManager(QObject):
             file_path,
             settings_json,
         ]
+        logger.debug(f"Executing command: {' '.join(command)}")
 
-        # Запускаем процесс
-        with subprocess.Popen(
-                command,
-                # stdout=subprocess.PIPE,
-                # stderr=subprocess.PIPE,
-                # text=True,  # Чтение текста вместо байтов
-        ) as process:
-            # Функция для чтения вывода в реальном времени
-            # def read_output(pipe, label):
-            #     for line in iter(pipe.readline, ""):
-            #         self.qt_signal.emit(f"{label}: {line.strip()}")
+        try:
+            with subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+            ) as process:
+                stdout, stderr = process.communicate()
+                logger.info(f"Blender process started for render: {file_path}")
+                if self.qt_signal:
+                    self.qt_signal.emit(f"Blender starts with file: {file_path}")
 
-            # # Читаем stdout и stderr параллельно
-            # stdout_thread = threading.Thread(target=read_output, args=(process.stdout, "STDOUT"))
-            # stderr_thread = threading.Thread(target=read_output, args=(process.stderr, "STDERR"))
-            #
-            # stdout_thread.start()
-            # stderr_thread.start()
-            #
-            # # Ждем завершения потоков
-            # stdout_thread.join()
-            # stderr_thread.join()
+                if process.returncode != 0:
+                    logger.error(f"Render failed for {file_path}, return code: {process.returncode}, stderr: {stderr}")
+                    if self.qt_signal:
+                        self.qt_signal.emit(f"Render failed with code {process.returncode}: {stderr}")
+                else:
+                    logger.info(f"Render completed successfully for {file_path}")
+                    if self.qt_signal:
+                        self.qt_signal.emit(f"Render completed for {file_path}")
 
-            # Проверяем статус завершения процесса
-            # self.qt_signal.emit(f"Процесс завершился с кодом {process.returncode}")
-            self.qt_signal.emit(f"Blender starts with file: {file_path}")
-            # if process.returncode != 0:
-            #     # print(f"Ошибка выполнения: Процесс завершился с кодом {process.returncode}")
-            #     self.qt_signal.emit(f"Ошибка выполнения: Процесс завершился с кодом {process.returncode}")
-            # else:
-            #     # print("Процесс успешно завершен.")
-            #     self.qt_signal.emit("Процесс успешно завершен.")
+        except subprocess.SubprocessError as e:
+            logger.error(f"Subprocess error rendering project {file_path}: {str(e)}")
+            if self.qt_signal:
+                self.qt_signal.emit(f"Subprocess error rendering project: {str(e)}")
+        except Exception as e:
+            logger.error(f"Unexpected error rendering project {file_path}: {str(e)}")
+            if self.qt_signal:
+                self.qt_signal.emit(f"Unexpected error rendering project: {str(e)}")
 
         callback()
 
-    def _on_render_complete(self, projects_to_render):
+    def _on_render_complete(self, projects_to_render: List) -> None:
+        """Handle completion of a project render and proceed to the next."""
         # Выводим информацию о завершении рендера
-        self.qt_signal.emit(f"Render ends\n")
+        logger.info("Project render completed")
+        if self.qt_signal:
+            self.qt_signal.emit("Render ends\n")
 
         # Запускаем рендер следующего файла
         self._render_next(projects_to_render)
 
-    def get_settings_from_project(self, file_path):
+    def get_settings_from_project(self, file_path: str) -> Optional[dict]:
+        """Retrieve rendering settings from a Blender project file."""
+        if not isinstance(file_path, str):
+            logger.error(f"Invalid file path type: {type(file_path)}, expected string")
+            if self.qt_signal:
+                self.qt_signal.emit(f"Error: Invalid file path type: {type(file_path)}")
+            return None
+        if not file_path:
+            logger.error("Empty file path provided")
+            if self.qt_signal:
+                self.qt_signal.emit("Error: Empty file path")
+            return None
+        if not utils.is_path_exists(file_path):
+            logger.error(f"Project file not found: {file_path}")
+            if self.qt_signal:
+                self.qt_signal.emit(f"File {file_path} not found.")
+            return None
+
+        logger.info(f"Retrieving settings from project: {file_path}")
         try:
             bpy.ops.wm.open_mainfile(filepath=file_path)
             scene = bpy.context.scene
@@ -191,8 +357,6 @@ class BlenderManager(QObject):
             enum_formats = scene.render.image_settings.bl_rna.properties['file_format'].enum_items
             for item in enum_formats:
                 file_formats.append(item.name)
-
-            # cameras = [obj.name for obj in bpy.data.objects if obj.type == 'CAMERA']
 
             # Dict
             settings = {
@@ -219,13 +383,13 @@ class BlenderManager(QObject):
                 "Render Engine": scene.render.engine,
 
                 # CYCLES
-                "CYCLES Samples": scene.cycles.samples,
-                "Denoising": scene.cycles.use_denoising,
-                "Device": scene.cycles.device,
+                "CYCLES Samples": scene.cycles.samples if hasattr(scene, 'cycles') else 128,
+                "Denoising": scene.cycles.use_denoising if hasattr(scene, 'cycles') else False,
+                "Device": scene.cycles.device if hasattr(scene, 'cycles') else "CPU",
                 "Threads": 0,
 
                 # EEVEE
-                "EEVEE Samples": scene.eevee.taa_render_samples,
+                "EEVEE Samples": scene.eevee.taa_render_samples if hasattr(scene, 'eevee') else 64,
 
                 # Output
                 "File Format": scene.render.image_settings.file_format,
@@ -235,8 +399,11 @@ class BlenderManager(QObject):
                 "Output Path": scene.render.filepath,
             }
 
+            logger.info(f"Successfully retrieved settings from {file_path}")
             return settings
 
         except Exception as e:
-            self.qt_signal.emit(f"Error: {str(e)}")
-            return  # {"Error": str(e)}
+            logger.error(f"Error retrieving settings from {file_path}: {str(e)}")
+            if self.qt_signal:
+                self.qt_signal.emit(f"Error retrieving settings: {str(e)}")
+            return None

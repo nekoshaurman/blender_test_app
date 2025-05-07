@@ -278,6 +278,8 @@ class BlenderInterface(QWidget):
         format_group.setLayout(format_layout)
         settings_layout.addWidget(format_group)
 
+        # TODO: Add name of file to output
+
         # Output settings
         output_group = QGroupBox("Output")
         output_layout = QVBoxLayout()
