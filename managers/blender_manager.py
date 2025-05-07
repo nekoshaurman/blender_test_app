@@ -26,7 +26,7 @@ console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
 
-# TODO: Добавить рендер movie
+# TODO: Add script for Movie render type
 class BlenderManager(QObject):
     def __init__(self, parent=None):
         """Initialize BlenderManager with a parent QObject."""
@@ -257,7 +257,7 @@ class BlenderManager(QObject):
                 self.qt_signal.emit(f"Error rendering project: {str(e)}")
             self._on_render_complete(projects_to_render)
 
-    # TODO: Надо сделать отслеживание по логам блендера
+    # TODO: Progress with stdout from blender
     def _start_render(self, project, callback: Callable) -> None:
         """Execute the rendering process for a project."""
         file_path = project.file_path
@@ -424,7 +424,7 @@ class BlenderManager(QObject):
                 "Frame Step": scene.frame_step,
                 "Frame": scene.frame_current,
 
-                # TODO: Исключать движки рендера кроме eevee и cycles
+                # TODO: Only eevee/cycles engines
                 # Engines
                 "Render Engine": scene.render.engine,
 

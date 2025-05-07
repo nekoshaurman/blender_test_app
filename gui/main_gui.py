@@ -67,10 +67,10 @@ class BlenderInterface(QWidget):
 
             # Load and apply stylesheet
             try:
-                with open('./gui/styles/blender_style.css', 'r') as f:
+                with open('./gui/styles/blender_style.qss', 'r') as f:
                     self.setStyleSheet(f.read())
             except FileNotFoundError:
-                logger.warning("test_style.css not found, using default styling")
+                logger.warning("style.qss not found, using default styling")
             except Exception as e:
                 logger.error(f"Failed to load stylesheet: {str(e)}")
 
