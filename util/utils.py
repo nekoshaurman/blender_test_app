@@ -147,6 +147,7 @@ def get_cpu_count() -> int:
         return 1  # Fallback to 1 on error
 
 
+# TODO: Fix when use blender not in PATH (still not working render)
 def set_blender_in_path(blender_path: str) -> None:
     """Add Blender path to the system PATH environment variable."""
     if not isinstance(blender_path, str):

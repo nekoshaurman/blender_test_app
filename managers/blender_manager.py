@@ -120,10 +120,10 @@ class BlenderManager(QObject):
         settings = project.settings
         # Проверяем существование файлов
         if not utils.is_path_exists(file_path):
-            self.qt_signal.emit(f"Файл {file_path} не найден.")
+            self.qt_signal.emit(f"File {file_path} not founded.")
             return
-        if not utils.is_path_exists("../scripts/render_script.py"):
-            self.qt_signal.emit("Файл render_script.py не найден.")
+        if not utils.is_path_exists(utils.transform_path_to_standard(utils.get_config_value("work_directory") + "\\scripts\\render_script.py")):
+            self.qt_signal.emit("File render_script.py not founded.")
             return
 
         # Преобразуем настройки в JSON-строку
@@ -134,7 +134,7 @@ class BlenderManager(QObject):
         command = [
             blender_executable,
             "--background",  # Запуск в фоновом режиме
-            "--python", "render_script.py",  # Скрипт для выполнения
+            "--python", "./scripts/render_script.py",  # Скрипт для выполнения
             "--",  # Разделитель для аргументов скрипта
             file_path,
             settings_json,
