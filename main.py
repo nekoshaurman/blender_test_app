@@ -29,7 +29,7 @@ if __name__ == "__main__":
         utils.set_config_value("work_directory", work_directory)
         logger.info(f"Set working directory: {work_directory}")
 
-        app = QApplication(sys.argv)
+        app = QApplication(sys.argv + ['-platform', 'windows:darkmode=1'])
         app.setStyle('Fusion')
         window = BlenderInterface()
         window.setFixedSize(1600, 900)

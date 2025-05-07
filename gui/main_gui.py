@@ -62,12 +62,15 @@ class BlenderInterface(QWidget):
             self.setLayout(self.main_layout)
             self.setWindowTitle("Blender Interface")
 
+            # TODO: Fix in blender style QComboBox (white background and choose button)
+            # TODO: Fix additional buttons (almost all broken, need to change paths in css, already done with checkbox)
+
             # Load and apply stylesheet
             try:
-                with open('styles.css', 'r') as f:
+                with open('./gui/styles/blender_style.css', 'r') as f:
                     self.setStyleSheet(f.read())
             except FileNotFoundError:
-                logger.warning("styles.css not found, using default styling")
+                logger.warning("test_style.css not found, using default styling")
             except Exception as e:
                 logger.error(f"Failed to load stylesheet: {str(e)}")
 
