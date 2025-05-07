@@ -166,17 +166,40 @@ class BlenderManager(QObject):
                     command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    text=True
+                    text=True,
+                    bufsize=1,  # Line buffering
+                    universal_newlines=True
             ) as process:
-                stdout, stderr = process.communicate()
+                # Function to read output in real time
+                def read_output(pipe, label: str):
+                    try:
+                        for line in iter(pipe.readline, ''):
+                            if line:
+                                logger.debug(f"{label}: {line.strip()}")
+                                if self.qt_signal:
+                                    self.qt_signal.emit(f"{label}: {line.strip()}")
+                    except Exception as e:
+                        logger.error(f"Error reading {label} for {file_path}: {str(e)}")
+
                 logger.info(f"Blender process started for thumbnail: {file_path}")
                 if self.qt_signal:
                     self.qt_signal.emit(f"Blender starts with file: {file_path}")
 
+                # Start threads to read stdout and stderr
+                stdout_thread = threading.Thread(target=read_output, args=(process.stdout, "STDOUT"))
+                stderr_thread = threading.Thread(target=read_output, args=(process.stderr, "STDERR"))
+                stdout_thread.start()
+                stderr_thread.start()
+
+                # Wait for process to complete
+                process.wait()
+                stdout_thread.join()
+                stderr_thread.join()
+
                 if process.returncode != 0:
-                    logger.error(f"Thumbnail render failed for {file_path}, return code: {process.returncode}, stderr: {stderr}")
+                    logger.error(f"Thumbnail render failed for {file_path}, return code: {process.returncode}")
                     if self.qt_signal:
-                        self.qt_signal.emit(f"Thumbnail render failed with code {process.returncode}: {stderr}")
+                        self.qt_signal.emit(f"Thumbnail render failed with code {process.returncode}")
                 else:
                     logger.info(f"Thumbnail render completed successfully for {file_path}")
                     if self.qt_signal:
@@ -293,17 +316,40 @@ class BlenderManager(QObject):
                     command,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    text=True
+                    text=True,
+                    bufsize=1,  # Line buffering
+                    universal_newlines=True
             ) as process:
-                stdout, stderr = process.communicate()
+                # Function to read output in real time
+                def read_output(pipe, label: str):
+                    try:
+                        for line in iter(pipe.readline, ''):
+                            if line:
+                                logger.debug(f"{label}: {line.strip()}")
+                                if self.qt_signal:
+                                    self.qt_signal.emit(f"{label}: {line.strip()}")
+                    except Exception as e:
+                        logger.error(f"Error reading {label} for {file_path}: {str(e)}")
+
                 logger.info(f"Blender process started for render: {file_path}")
                 if self.qt_signal:
                     self.qt_signal.emit(f"Blender starts with file: {file_path}")
 
+                # Start threads to read stdout and stderr
+                stdout_thread = threading.Thread(target=read_output, args=(process.stdout, "STDOUT"))
+                stderr_thread = threading.Thread(target=read_output, args=(process.stderr, "STDERR"))
+                stdout_thread.start()
+                stderr_thread.start()
+
+                # Wait for process to complete
+                process.wait()
+                stdout_thread.join()
+                stderr_thread.join()
+
                 if process.returncode != 0:
-                    logger.error(f"Render failed for {file_path}, return code: {process.returncode}, stderr: {stderr}")
+                    logger.error(f"Render failed for {file_path}, return code: {process.returncode}")
                     if self.qt_signal:
-                        self.qt_signal.emit(f"Render failed with code {process.returncode}: {stderr}")
+                        self.qt_signal.emit(f"Render failed with code {process.returncode}")
                 else:
                     logger.info(f"Render completed successfully for {file_path}")
                     if self.qt_signal:
