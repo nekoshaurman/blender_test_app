@@ -23,6 +23,18 @@ console_handler = logging.StreamHandler()
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
+
+def apply_stylesheet(app):
+    # Load and apply stylesheet
+    try:
+        with open('./gui/styles/blender_style.qss', 'r') as f:
+            app.setStyleSheet(f.read())
+    except FileNotFoundError:
+        logger.warning("style.qss not found, using default styling")
+    except Exception as e:
+        logger.error(f"Failed to load stylesheet: {str(e)}")
+
+
 if __name__ == "__main__":
     try:
         work_directory = os.path.dirname(os.path.abspath(__file__))
@@ -30,11 +42,16 @@ if __name__ == "__main__":
         logger.info(f"Set working directory: {work_directory}")
 
         app = QApplication(sys.argv + ['-platform', 'windows:darkmode=1'])
+
+        apply_stylesheet(app)
         app.setStyle('Fusion')
+
         window = BlenderInterface()
         window.setFixedSize(1600, 900)
         window.show()
+
         logger.info("Application started")
+
         sys.exit(app.exec_())
     except Exception as e:
         logger.critical(f"Application failed to start: {str(e)}")
