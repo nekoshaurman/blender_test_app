@@ -257,7 +257,6 @@ class BlenderManager(QObject):
                 self.qt_signal.emit(f"Error rendering project: {str(e)}")
             self._on_render_complete(projects_to_render)
 
-    # TODO: Progress with stdout from blender
     def _start_render(self, project, callback: Callable) -> None:
         """Execute the rendering process for a project."""
         file_path = project.file_path

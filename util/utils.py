@@ -17,9 +17,9 @@ file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
 # Console handler
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+# console_handler = logging.StreamHandler()
+# console_handler.setFormatter(formatter)
+# logger.addHandler(console_handler)
 
 
 def transform_path_to_standard(path: str) -> str:
@@ -147,7 +147,6 @@ def get_cpu_count() -> int:
         return 1  # Fallback to 1 on error
 
 
-# TODO: Fix when use blender not in PATH (still not working render)
 def set_blender_in_path(blender_path: str) -> None:
     """Add Blender path to the system PATH environment variable."""
     if not isinstance(blender_path, str):
