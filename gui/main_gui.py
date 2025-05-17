@@ -113,6 +113,7 @@ class BlenderInterface(QWidget):
         blender_version_layout.addWidget(blender_version_label)
         blender_version_layout.addWidget(self.blender_version_text)
 
+        # TODO: Add stop button
         # Render start button
         start_render_layout = QHBoxLayout()
         start_render_label = QLabel("Start render:")
@@ -551,6 +552,7 @@ class BlenderInterface(QWidget):
             logger.error(f"Error adding blender binary: {str(e)}")
             self.update_output(f"Error adding blender binary: {str(e)}")
 
+    # TODO: Fix other project get another settings in cycles
     def show_file_details(self, item):
         logger.debug(f"Showing details for file: {item.text()}")
         try:

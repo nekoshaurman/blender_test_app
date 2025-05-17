@@ -4,6 +4,7 @@ import sys
 from logging.handlers import RotatingFileHandler
 
 from PyQt5.QtWidgets import QApplication
+from PyQt5 import QtGui
 
 import util.utils as utils
 from gui.main_gui import BlenderInterface
@@ -45,6 +46,7 @@ if __name__ == "__main__":
 
         apply_stylesheet(app)
         app.setStyle('Fusion')
+        app.setFont(QtGui.QFont("Blender Mono I18n", 10))
 
         window = BlenderInterface()
         window.setFixedSize(1600, 900)
